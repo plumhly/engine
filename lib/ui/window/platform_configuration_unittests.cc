@@ -29,7 +29,8 @@ class DummyPlatformConfigurationClient : public PlatformConfigurationClient {
   void ScheduleFrame() override {}
   void Render(Scene* scene) override {}
   void UpdateSemantics(SemanticsUpdate* update) override {}
-  void HandlePlatformMessage(fml::RefPtr<PlatformMessage> message) override {}
+  void HandlePlatformMessage(
+      std::unique_ptr<PlatformMessage> message) override {}
   FontCollection& GetFontCollection() override { return font_collection_; }
   void UpdateIsolateDescription(const std::string isolate_name,
                                 int64_t isolate_port) override {}
@@ -102,7 +103,7 @@ TEST_F(ShellTest, PlatformConfigurationWindowMetricsUpdate) {
 
     ASSERT_NE(configuration->get_window(0), nullptr);
     configuration->get_window(0)->UpdateWindowMetrics(
-        ViewportMetrics{2.0, 10.0, 20.0});
+        ViewportMetrics{2.0, 10.0, 20.0, 22});
     ASSERT_EQ(
         configuration->get_window(0)->viewport_metrics().device_pixel_ratio,
         2.0);
@@ -110,6 +111,9 @@ TEST_F(ShellTest, PlatformConfigurationWindowMetricsUpdate) {
               10.0);
     ASSERT_EQ(configuration->get_window(0)->viewport_metrics().physical_height,
               20.0);
+    ASSERT_EQ(
+        configuration->get_window(0)->viewport_metrics().physical_touch_slop,
+        22);
 
     message_latch->Signal();
   };

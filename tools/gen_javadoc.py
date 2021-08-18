@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+#
 # Copyright 2013 The Flutter Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -11,12 +12,23 @@ import sys
 ANDROID_SRC_ROOT = 'flutter/shell/platform/android'
 
 
+def JavadocBin():
+  script_path = os.path.dirname(os.path.realpath(__file__))
+  if sys.platform == 'darwin':
+    return os.path.join(script_path, '..', '..', 'third_party', 'java', 'openjdk', 'Contents', 'Home', 'bin', 'javadoc')
+  elif sys.platform.startswith(('cygwin', 'win')):
+    return os.path.join(script_path, '..', '..', 'third_party', 'java', 'openjdk', 'bin', 'javadoc.exe')
+  else :
+    return os.path.join(script_path, '..', '..', 'third_party', 'java', 'openjdk', 'bin', 'javadoc')
+
+
 def main():
   parser = argparse.ArgumentParser(description='Runs javadoc on Flutter Android libraries')
   parser.add_argument('--out-dir', type=str, required=True)
   parser.add_argument('--android-source-root', type=str, default=ANDROID_SRC_ROOT)
   parser.add_argument('--build-config-path', type=str)
   parser.add_argument('--third-party', type=str, default='third_party')
+  parser.add_argument('--quiet', default=False, action='store_true')
   args = parser.parse_args()
 
   if not os.path.exists(args.android_source_root):
@@ -29,6 +41,7 @@ def main():
 
   classpath = [
     args.android_source_root,
+    os.path.join(args.third_party, 'android_tools/sdk//platforms/android-30/android.jar'),
     os.path.join(args.third_party, 'android_embedding_dependencies', 'lib', '*'),
   ]
   if args.build_config_path:
@@ -58,14 +71,25 @@ def main():
   ]
 
   command = [
-    'javadoc',
+    JavadocBin(),
     '-classpath', ':'.join(classpath),
     '-d', args.out_dir,
     '-link', 'https://developer.android.com/reference/',
+    '-source', '1.8',
   ] + packages
-  print(' '.join(command))
 
-  return subprocess.call(command)
+  if not args.quiet:
+    print(' '.join(command))
+
+  try:
+    output = subprocess.check_output(command, stderr=subprocess.STDOUT)
+    if not args.quiet:
+      print(output)
+  except subprocess.CalledProcessError as e:
+    print(e.output.decode('utf-8'))
+    return e.returncode
+
+  return 0
 
 
 if __name__ == '__main__':

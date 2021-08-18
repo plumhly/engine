@@ -6,6 +6,7 @@
 
 #include "flutter/shell/common/shell_test.h"
 
+#include "flutter/flow/frame_timings.h"
 #include "flutter/flow/layers/layer_tree.h"
 #include "flutter/flow/layers/transform_layer.h"
 #include "flutter/fml/build_config.h"
@@ -26,16 +27,17 @@ ShellTest::ShellTest()
 
 void ShellTest::SendEnginePlatformMessage(
     Shell* shell,
-    fml::RefPtr<PlatformMessage> message) {
+    std::unique_ptr<PlatformMessage> message) {
   fml::AutoResetWaitableEvent latch;
   fml::TaskRunner::RunNowOrPostTask(
       shell->GetTaskRunners().GetPlatformTaskRunner(),
-      [shell, &latch, message = std::move(message)]() {
-        if (auto engine = shell->weak_engine_) {
-          engine->HandlePlatformMessage(std::move(message));
-        }
-        latch.Signal();
-      });
+      fml::MakeCopyable(
+          [shell, &latch, message = std::move(message)]() mutable {
+            if (auto engine = shell->weak_engine_) {
+              engine->HandlePlatformMessage(std::move(message));
+            }
+            latch.Signal();
+          }));
   latch.Wait();
 }
 
@@ -123,7 +125,8 @@ void ShellTest::SetViewportMetrics(Shell* shell, double width, double height) {
       0,       // gesture inset top
       0,       // gesture inset right
       0,       // gesture inset bottom
-      0        // gesture inset left
+      0,       // gesture inset left
+      22       // physical touch slop
   };
   // Set viewport to nonempty, and call Animator::BeginFrame to make the layer
   // tree pipeline nonempty. Without either of this, the layer tree below
@@ -136,7 +139,10 @@ void ShellTest::SetViewportMetrics(Shell* shell, double width, double height) {
           const auto frame_begin_time = fml::TimePoint::Now();
           const auto frame_end_time =
               frame_begin_time + fml::TimeDelta::FromSecondsF(1.0 / 60.0);
-          engine->animator_->BeginFrame(frame_begin_time, frame_end_time);
+          std::unique_ptr<FrameTimingsRecorder> recorder =
+              std::make_unique<FrameTimingsRecorder>();
+          recorder->RecordVsync(frame_begin_time, frame_end_time);
+          engine->animator_->BeginFrame(std::move(recorder));
         }
         latch.Signal();
       });
@@ -159,7 +165,7 @@ void ShellTest::PumpOneFrame(Shell* shell,
                              double width,
                              double height,
                              LayerTreeBuilder builder) {
-  PumpOneFrame(shell, {1.0, width, height}, std::move(builder));
+  PumpOneFrame(shell, {1.0, width, height, 22}, std::move(builder));
 }
 
 void ShellTest::PumpOneFrame(Shell* shell,
@@ -175,7 +181,10 @@ void ShellTest::PumpOneFrame(Shell* shell,
         const auto frame_begin_time = fml::TimePoint::Now();
         const auto frame_end_time =
             frame_begin_time + fml::TimeDelta::FromSecondsF(1.0 / 60.0);
-        engine->animator_->BeginFrame(frame_begin_time, frame_end_time);
+        std::unique_ptr<FrameTimingsRecorder> recorder =
+            std::make_unique<FrameTimingsRecorder>();
+        recorder->RecordVsync(frame_begin_time, frame_end_time);
+        engine->animator_->BeginFrame(std::move(recorder));
         latch.Signal();
       });
   latch.Wait();
@@ -325,7 +334,7 @@ std::unique_ptr<Shell> ShellTest::CreateShell(
           std::make_unique<ShellTestVsyncWaiter>(task_runners, vsync_clock));
     } else {
       return static_cast<std::unique_ptr<VsyncWaiter>>(
-          std::make_unique<VsyncWaiterFallback>(task_runners));
+          std::make_unique<VsyncWaiterFallback>(task_runners, true));
     }
   };
 

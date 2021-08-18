@@ -9,11 +9,19 @@ namespace flutter {
 // Multipler used to map controller velocity to an appropriate scroll input.
 static constexpr double kControllerScrollMultiplier = 3;
 
+// TODO(clarkezone): Determine pointer ID in
+// OnPointerPressed/OnPointerReleased/OnPointerMoved in order to support multi
+// touch. See https://github.com/flutter/flutter/issues/70201
+static constexpr int32_t kDefaultPointerDeviceId = 0;
+
 FlutterWindowWinUWP::FlutterWindowWinUWP(
-    ABI::Windows::UI::Core::CoreWindow* window) {
-  winrt::Windows::UI::Core::CoreWindow cw{nullptr};
-  winrt::copy_from_abi(cw, window);
-  window_ = cw;
+    ABI::Windows::ApplicationModel::Core::CoreApplicationView*
+        applicationview) {
+  winrt::Windows::ApplicationModel::Core::CoreApplicationView cav{nullptr};
+  winrt::copy_from_abi(cav, applicationview);
+
+  application_view_ = cav;
+  window_ = application_view_.CoreWindow();
 
   SetEventHandlers();
 
@@ -44,6 +52,10 @@ WindowsRenderTarget FlutterWindowWinUWP::GetRenderTarget() {
   render_target_.Size({bounds.width, bounds.height});
   return WindowsRenderTarget(render_target_);
 #endif
+}
+
+PlatformWindow FlutterWindowWinUWP::GetPlatformWindow() {
+  return application_view_;
 }
 
 void FlutterWindowWinUWP::ApplyInverseDpiScalingTransform() {
@@ -110,6 +122,16 @@ float FlutterWindowWinUWP::GetDpiScale() {
   return display_helper_->GetDpiScale();
 }
 
+bool FlutterWindowWinUWP::IsVisible() {
+  // This is called from raster thread as an optimization to not wait for vsync
+  // if window is invisible. However CoreWindow is not agile so we can't call
+  // Visible() from raster thread. For now assume window is always visible.
+  // Possible solution would be to register a VisibilityChanged handler and
+  // store the visiblity state in a variable. TODO(knopp)
+  // https://github.com/flutter/flutter/issues/87870
+  return true;
+}
+
 void FlutterWindowWinUWP::OnDpiChanged(
     winrt::Windows::Graphics::Display::DisplayInformation const& args,
     winrt::Windows::Foundation::IInspectable const&) {
@@ -129,7 +151,7 @@ void FlutterWindowWinUWP::OnPointerPressed(
   FlutterPointerDeviceKind device_kind = GetPointerDeviceKind(args);
 
   binding_handler_delegate_->OnPointerDown(
-      x, y, device_kind,
+      x, y, device_kind, kDefaultPointerDeviceId,
       FlutterPointerMouseButtons::kFlutterPointerButtonMousePrimary);
 }
 
@@ -141,7 +163,7 @@ void FlutterWindowWinUWP::OnPointerReleased(
   FlutterPointerDeviceKind device_kind = GetPointerDeviceKind(args);
 
   binding_handler_delegate_->OnPointerUp(
-      x, y, device_kind,
+      x, y, device_kind, kDefaultPointerDeviceId,
       FlutterPointerMouseButtons::kFlutterPointerButtonMousePrimary);
 }
 
@@ -152,7 +174,8 @@ void FlutterWindowWinUWP::OnPointerMoved(
   double y = GetPosY(args);
   FlutterPointerDeviceKind device_kind = GetPointerDeviceKind(args);
 
-  binding_handler_delegate_->OnPointerMove(x, y, device_kind);
+  binding_handler_delegate_->OnPointerMove(x, y, device_kind,
+                                           kDefaultPointerDeviceId);
 }
 
 void FlutterWindowWinUWP::OnPointerWheelChanged(
@@ -160,8 +183,10 @@ void FlutterWindowWinUWP::OnPointerWheelChanged(
     winrt::Windows::UI::Core::PointerEventArgs const& args) {
   double x = GetPosX(args);
   double y = GetPosY(args);
+  FlutterPointerDeviceKind device_kind = GetPointerDeviceKind(args);
   int delta = args.CurrentPoint().Properties().MouseWheelDelta();
-  binding_handler_delegate_->OnScroll(x, y, 0, -delta, 1);
+  binding_handler_delegate_->OnScroll(x, y, 0, -delta, 1, device_kind,
+                                      kDefaultPointerDeviceId);
 }
 
 double FlutterWindowWinUWP::GetPosX(

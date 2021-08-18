@@ -21,15 +21,17 @@ class PlatformViewAndroidJNIImpl final : public PlatformViewAndroidJNI {
   ~PlatformViewAndroidJNIImpl() override;
 
   void FlutterViewHandlePlatformMessage(
-      fml::RefPtr<flutter::PlatformMessage> message,
+      std::unique_ptr<flutter::PlatformMessage> message,
       int responseId) override;
 
   void FlutterViewHandlePlatformMessageResponse(
       int responseId,
       std::unique_ptr<fml::Mapping> data) override;
 
-  void FlutterViewUpdateSemantics(std::vector<uint8_t> buffer,
-                                  std::vector<std::string> strings) override;
+  void FlutterViewUpdateSemantics(
+      std::vector<uint8_t> buffer,
+      std::vector<std::string> strings,
+      std::vector<std::vector<uint8_t>> string_attribute_args) override;
 
   void FlutterViewUpdateCustomAccessibilityActions(
       std::vector<uint8_t> actions_buffer,
@@ -39,16 +41,15 @@ class PlatformViewAndroidJNIImpl final : public PlatformViewAndroidJNI {
 
   void FlutterViewOnPreEngineRestart() override;
 
-  void SurfaceTextureAttachToGLContext(JavaWeakGlobalRef surface_texture,
+  void SurfaceTextureAttachToGLContext(JavaLocalRef surface_texture,
                                        int textureId) override;
 
-  void SurfaceTextureUpdateTexImage(JavaWeakGlobalRef surface_texture) override;
+  void SurfaceTextureUpdateTexImage(JavaLocalRef surface_texture) override;
 
-  void SurfaceTextureGetTransformMatrix(JavaWeakGlobalRef surface_texture,
+  void SurfaceTextureGetTransformMatrix(JavaLocalRef surface_texture,
                                         SkMatrix& transform) override;
 
-  void SurfaceTextureDetachFromGLContext(
-      JavaWeakGlobalRef surface_texture) override;
+  void SurfaceTextureDetachFromGLContext(JavaLocalRef surface_texture) override;
 
   void FlutterViewOnDisplayPlatformView(int view_id,
                                         int x,

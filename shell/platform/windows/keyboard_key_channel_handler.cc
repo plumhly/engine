@@ -32,6 +32,15 @@ static constexpr char kKeyDown[] = "keydown";
 // emitting a warning on the console about unhandled events.
 static constexpr int kMaxPendingEvents = 1000;
 
+// The bit for a scancode indicating the key is extended.
+//
+// Win32 defines some keys to be "extended", such as ShiftRight, which shares
+// the same scancode as its non-extended counterpart, such as ShiftLeft.  In
+// Chromium's scancode table, from which Flutter's physical key list is
+// derived, these keys are marked with this bit.  See
+// https://chromium.googlesource.com/codesearch/chromium/src/+/refs/heads/master/ui/events/keycodes/dom/dom_code_data.inc
+static constexpr int kScancodeExtended = 0xe000;
+
 // Re-definition of the modifiers for compatibility with the Flutter framework.
 // These have to be in sync with the framework's RawKeyEventDataWindows
 // modifiers definition.
@@ -94,6 +103,17 @@ int GetModsForKeyState() {
 #endif
 }
 
+// Revert the "character" for a dead key to its normal value, or the argument
+// unchanged otherwise.
+//
+// When a dead key is pressed, the WM_KEYDOWN's lParam is mapped to a special
+// value: the "normal character" | 0x80000000.  For example, when pressing
+// "dead key caret" (one that makes the following e into ê), its mapped
+// character is 0x8000005E. "Reverting" it gives 0x5E, which is character '^'.
+uint32_t _UndeadChar(uint32_t ch) {
+  return ch & ~0x80000000;
+}
+
 }  // namespace
 
 KeyboardKeyChannelHandler::KeyboardKeyChannelHandler(
@@ -119,8 +139,9 @@ void KeyboardKeyChannelHandler::KeyboardHook(
   rapidjson::Document event(rapidjson::kObjectType);
   auto& allocator = event.GetAllocator();
   event.AddMember(kKeyCodeKey, key, allocator);
-  event.AddMember(kScanCodeKey, scancode, allocator);
-  event.AddMember(kCharacterCodePointKey, character, allocator);
+  event.AddMember(kScanCodeKey, scancode | (extended ? kScancodeExtended : 0),
+                  allocator);
+  event.AddMember(kCharacterCodePointKey, _UndeadChar(character), allocator);
   event.AddMember(kKeyMapKey, kWindowsKeyMap, allocator);
   event.AddMember(kModifiersKey, GetModsForKeyState(), allocator);
 

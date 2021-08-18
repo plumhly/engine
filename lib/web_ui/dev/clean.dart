@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.6
 import 'dart:async';
 import 'dart:io' as io;
 
@@ -12,18 +11,18 @@ import 'package:path/path.dart' as path;
 import 'environment.dart';
 import 'utils.dart';
 
-class CleanCommand extends Command<bool> with ArgUtils {
+class CleanCommand extends Command<bool> with ArgUtils<bool> {
   CleanCommand() {
     argParser
       ..addFlag(
         'flutter',
         defaultsTo: true,
-        help: 'Cleans up the .dart_tool directory under engine/src/flutter.',
+        help: 'Cleans up the .dart_tool directory under engine/src/flutter. Enabled by default.',
       )
       ..addFlag(
         'ninja',
         defaultsTo: false,
-        help: 'Also clean up the engine out directory with ninja output.',
+        help: 'Also clean up the engine out directory with ninja output. Disabled by default.',
       );
   }
 

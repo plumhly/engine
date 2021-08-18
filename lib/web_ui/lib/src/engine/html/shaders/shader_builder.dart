@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-part of engine;
+import 'package:ui/ui.dart' as ui;
+
+import '../../browser_detection.dart';
+import '../../util.dart';
 
 /// Creates shader program for target webgl version.
 ///
@@ -27,8 +30,8 @@ part of engine;
 class ShaderBuilder {
   /// WebGL version.
   final int version;
-  final List<ShaderDeclaration> declarations = [];
-  final List<ShaderMethod> _methods = [];
+  final List<ShaderDeclaration> declarations = <ShaderDeclaration>[];
+  final List<ShaderMethod> _methods = <ShaderMethod>[];
 
   /// Precision for integer variables.
   int? integerPrecision;
@@ -80,7 +83,7 @@ class ShaderBuilder {
   /// series of graphics primitives are rendered. The value is only accessible
   /// in the vertex shader.
   ShaderDeclaration addIn(int dataType, {String? name}) {
-    ShaderDeclaration attrib = ShaderDeclaration(
+    final ShaderDeclaration attrib = ShaderDeclaration(
         name ?? 'attr_${_attribCounter++}',
         dataType,
         ShaderStorageQualifier.kAttribute);
@@ -90,7 +93,7 @@ class ShaderBuilder {
 
   /// Adds a constant.
   ShaderDeclaration addConst(int dataType, String value, {String? name}) {
-    ShaderDeclaration declaration = ShaderDeclaration.constant(
+    final ShaderDeclaration declaration = ShaderDeclaration.constant(
         name ?? 'c_${_constCounter++}', dataType, value);
     declarations.add(declaration);
     return declaration;
@@ -102,7 +105,7 @@ class ShaderBuilder {
   /// It is accessible in both the vertex and fragment shaders.
   ///
   ShaderDeclaration addUniform(int dataType, {String? name}) {
-    ShaderDeclaration uniform = ShaderDeclaration(
+    final ShaderDeclaration uniform = ShaderDeclaration(
         name ?? 'uni_${_uniformCounter++}',
         dataType,
         ShaderStorageQualifier.kUniform);
@@ -117,7 +120,7 @@ class ShaderBuilder {
   /// input to a fragment shader.
   /// It can be used in a fragment shader, but not changed.
   ShaderDeclaration addOut(int dataType, {String? name}) {
-    ShaderDeclaration varying = ShaderDeclaration(
+    final ShaderDeclaration varying = ShaderDeclaration(
         name ?? 'output_${_varyingCounter++}',
         dataType,
         ShaderStorageQualifier.kVarying);
@@ -217,10 +220,10 @@ class ShaderBuilder {
     if (isWebGl2 && _fragmentColorDeclaration != null) {
       _writeVariableDeclaration(_buffer, _fragmentColorDeclaration!);
     }
-    for (ShaderDeclaration decl in declarations) {
+    for (final ShaderDeclaration decl in declarations) {
       _writeVariableDeclaration(_buffer, decl);
     }
-    for (ShaderMethod method in _methods) {
+    for (final ShaderMethod method in _methods) {
       method.write(_buffer);
     }
     return _buffer.toString();
@@ -238,7 +241,7 @@ class ShaderMethod {
 
   final String returnType = 'void';
   final String name;
-  final List<String> _statements = [];
+  final List<String> _statements = <String>[];
   int _indentLevel = 1;
 
   void indent() {
@@ -290,9 +293,7 @@ class ShaderMethod {
 
   void write(StringBuffer buffer) {
     buffer.writeln('$returnType $name() {');
-    for (String statement in _statements) {
-      buffer.writeln(statement);
-    }
+    _statements.forEach(buffer.writeln);
     buffer.writeln('}');
   }
 }
@@ -359,7 +360,7 @@ class ShaderDeclaration {
 
 // These are used only in debug mode to assert if used as variable name.
 // https://www.khronos.org/registry/OpenGL/specs/gl/GLSLangSpec.4.10.pdf
-const List<String> _kReservedWords = [
+const List<String> _kReservedWords = <String>[
   'attribute',
   'const',
   'uniform',

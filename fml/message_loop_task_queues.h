@@ -7,6 +7,7 @@
 
 #include <map>
 #include <mutex>
+#include <set>
 #include <vector>
 
 #include "flutter/fml/closure.h"
@@ -22,8 +23,11 @@ namespace fml {
 
 static const TaskQueueId _kUnmerged = TaskQueueId(TaskQueueId::kUnmerged);
 
-// This is keyed by the |TaskQueueId| and contains all the queue
-// components that make up a single TaskQueue.
+/// A collection of tasks and observers associated with one TaskQueue.
+///
+/// Often a TaskQueue has a one-to-one relationship with a fml::MessageLoop,
+/// this isn't the case when TaskQueues are merged via
+/// \p fml::MessageLoopTaskQueues::Merge.
 class TaskQueueEntry {
  public:
   using TaskObservers = std::map<intptr_t, fml::closure>;
@@ -31,11 +35,12 @@ class TaskQueueEntry {
   TaskObservers task_observers;
   std::unique_ptr<TaskSource> task_source;
 
-  // Note: Both of these can be _kUnmerged, which indicates that
-  // this queue has not been merged or subsumed. OR exactly one
-  // of these will be _kUnmerged, if owner_of is _kUnmerged, it means
-  // that the queue has been subsumed or else it owns another queue.
-  TaskQueueId owner_of;
+  /// Set of the TaskQueueIds which is owned by this TaskQueue. If the set is
+  /// empty, this TaskQueue does not own any other TaskQueues.
+  std::set<TaskQueueId> owner_of;
+
+  /// Identifies the TaskQueue that subsumes this TaskQueue. If it is _kUnmerged
+  /// it indicates that this TaskQueue is not owned by any other TaskQueue.
   TaskQueueId subsumed_by;
 
   TaskQueueId created_for;
@@ -51,9 +56,12 @@ enum class FlushType {
   kAll,
 };
 
-// This class keeps track of all the tasks and observers that
-// need to be run on it's MessageLoopImpl. This also wakes up the
-// loop at the required times.
+/// A singleton container for all tasks and observers associated with all
+/// fml::MessageLoops.
+///
+/// This also wakes up the loop at the required times.
+/// \see fml::MessageLoop
+/// \see fml::Wakeable
 class MessageLoopTaskQueues
     : public fml::RefCountedThreadSafe<MessageLoopTaskQueues> {
  public:
@@ -102,25 +110,28 @@ class MessageLoopTaskQueues
   //     to it. It is not aware of whether a queue is merged or not. Same with
   //     task observers.
   //  2. When we get the tasks to run now, we look at both the queue_ids
-  //     for the owner, subsumed will spin.
-  //  3. Each task queue can only be merged and subsumed once.
+  //     for the owner and the subsumed task queues.
+  //  3. One TaskQueue can subsume multiple other TaskQueues. A TaskQueue can be
+  //     in exactly one of the following three states:
+  //     a. Be an owner of multiple other TaskQueues.
+  //     b. Be subsumed by a TaskQueue (an owner can never be subsumed).
+  //     c. Be independent, i.e, neither owner nor be subsumed.
   //
   //  Methods currently aware of the merged state of the queues:
   //  HasPendingTasks, GetNextTaskToRun, GetNumPendingTasks
-
-  // This method returns false if either the owner or subsumed has already been
-  // merged with something else.
   bool Merge(TaskQueueId owner, TaskQueueId subsumed);
 
-  // Will return false if the owner has not been merged before.
-  bool Unmerge(TaskQueueId owner);
+  // Will return false if the owner has not been merged before, or owner was
+  // subsumed by others, or subsumed wasn't subsumed by others, or owner
+  // didn't own the given subsumed queue id.
+  bool Unmerge(TaskQueueId owner, TaskQueueId subsumed);
 
-  // Returns true if owner owns the subsumed task queue.
+  /// Returns \p true if \p owner owns the \p subsumed task queue.
   bool Owns(TaskQueueId owner, TaskQueueId subsumed) const;
 
   // Returns the subsumed task queue if any or |TaskQueueId::kUnmerged|
   // otherwise.
-  TaskQueueId GetSubsumedTaskQueueId(TaskQueueId owner) const;
+  std::set<TaskQueueId> GetSubsumedTaskQueueId(TaskQueueId owner) const;
 
   void PauseSecondarySource(TaskQueueId queue_id);
 

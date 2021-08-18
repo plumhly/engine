@@ -1650,9 +1650,9 @@ void ParagraphTxt::PaintShadow(SkCanvas* canvas,
 
     SkPaint paint;
     paint.setColor(text_shadow.color);
-    if (text_shadow.blur_radius != 0.0) {
+    if (text_shadow.blur_sigma > 0.5) {
       paint.setMaskFilter(SkMaskFilter::MakeBlur(
-          kNormal_SkBlurStyle, text_shadow.blur_radius, false));
+          kNormal_SkBlurStyle, text_shadow.blur_sigma, false));
     }
     canvas->drawTextBlob(record.text(), offset.x() + text_shadow.offset.x(),
                          offset.y() + text_shadow.offset.y(), paint);
@@ -1992,7 +1992,8 @@ Paragraph::Range<size_t> ParagraphTxt::GetWordBoundary(size_t offset) {
       return Range<size_t>(0, 0);
   }
 
-  word_breaker_->setText(icu::UnicodeString(false, text_.data(), text_.size()));
+  icu::UnicodeString icu_text(false, text_.data(), text_.size());
+  word_breaker_->setText(icu_text);
 
   int32_t prev_boundary = word_breaker_->preceding(offset + 1);
   int32_t next_boundary = word_breaker_->next();

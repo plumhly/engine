@@ -32,6 +32,9 @@ typedef PointerDataPacketCallback = void Function(PointerDataPacket packet);
 typedef _KeyDataResponseCallback = void Function(int responseId, bool handled);
 
 /// Signature for [PlatformDispatcher.onKeyData].
+///
+/// The callback should return true if the key event has been handled by the
+/// framework and should not be propagated further.
 typedef KeyDataCallback = bool Function(KeyData data);
 
 /// Signature for [PlatformDispatcher.onSemanticsAction].
@@ -52,6 +55,9 @@ typedef _SetNeedsReportTimingsFunc = void Function(bool value);
 
 /// Signature for [PlatformDispatcher.onConfigurationChanged].
 typedef PlatformConfigurationChangedCallback = void Function(PlatformConfiguration configuration);
+
+// A gesture setting value that indicates it has not been set by the engine.
+const double _kUnsetGestureSetting = -1.0;
 
 /// Platform event dispatcher singleton.
 ///
@@ -176,6 +182,7 @@ class PlatformDispatcher {
     double systemGestureInsetRight,
     double systemGestureInsetBottom,
     double systemGestureInsetLeft,
+    double physicalTouchSlop,
   ) {
     final ViewConfiguration previousConfiguration =
         _viewConfigurations[id] ?? const ViewConfiguration();
@@ -209,6 +216,10 @@ class PlatformDispatcher {
         right: math.max(0.0, systemGestureInsetRight),
         bottom: math.max(0.0, systemGestureInsetBottom),
         left: math.max(0.0, systemGestureInsetLeft),
+      ),
+      // -1 is used as a sentinel for an undefined touch slop
+      gestureSettings: GestureSettings(
+        physicalTouchSlop: physicalTouchSlop == _kUnsetGestureSetting ? null : physicalTouchSlop,
       ),
     );
     _invoke(onMetricsChanged, _onMetricsChangedZone);
@@ -346,6 +357,9 @@ class PlatformDispatcher {
   ///
   /// The framework invokes this callback in the same zone in which the callback
   /// was set.
+  ///
+  /// The callback should return true if the key event has been handled by the
+  /// framework and should not be propagated further.
   KeyDataCallback? get onKeyData => _onKeyData;
   KeyDataCallback? _onKeyData;
   Zone _onKeyDataZone = Zone.root;
@@ -433,10 +447,10 @@ class PlatformDispatcher {
 
   // Called from the engine, via hooks.dart
   void _reportTimings(List<int> timings) {
-    assert(timings.length % FramePhase.values.length == 0);
+    assert(timings.length % (FramePhase.values.length + 1) == 0);
     final List<FrameTiming> frameTimings = <FrameTiming>[];
-    for (int i = 0; i < timings.length; i += FramePhase.values.length) {
-      frameTimings.add(FrameTiming._(timings.sublist(i, i + FramePhase.values.length)));
+    for (int i = 0; i < timings.length; i += FramePhase.values.length + 1) {
+      frameTimings.add(FrameTiming._(timings.sublist(i, i + FramePhase.values.length + 1)));
     }
     _invoke1(onReportTimings, _onReportTimingsZone, frameTimings);
   }
@@ -877,6 +891,29 @@ class PlatformDispatcher {
     _onSemanticsActionZone = Zone.current;
   }
 
+  // Called from the engine via hooks.dart.
+  void _updateFrameData(int frameNumber) {
+    final FrameData previous = _frameData;
+    if (previous.frameNumber == frameNumber) {
+      return;
+    }
+    _frameData = FrameData._(frameNumber: frameNumber);
+    _invoke(onFrameDataChanged, _onFrameDataChangedZone);
+  }
+
+  /// The [FrameData] object for the current frame.
+  FrameData get frameData => _frameData;
+  FrameData _frameData = const FrameData._();
+
+  /// A callback that is invoked when the window updates the [FrameData].
+  VoidCallback? get onFrameDataChanged => _onFrameDataChanged;
+  VoidCallback? _onFrameDataChanged;
+  Zone _onFrameDataChangedZone = Zone.root;
+  set onFrameDataChanged(VoidCallback? callback) {
+    _onFrameDataChanged = callback;
+    _onFrameDataChangedZone = Zone.current;
+  }
+
   // Called from the engine, via hooks.dart
   void _dispatchSemanticsAction(int id, int action, ByteData? args) {
     _invoke3<int, SemanticsAction, ByteData?>(
@@ -997,6 +1034,7 @@ class ViewConfiguration {
     this.viewPadding = WindowPadding.zero,
     this.systemGestureInsets = WindowPadding.zero,
     this.padding = WindowPadding.zero,
+    this.gestureSettings = const GestureSettings(),
   });
 
   /// Copy this configuration with some fields replaced.
@@ -1009,6 +1047,7 @@ class ViewConfiguration {
     WindowPadding? viewPadding,
     WindowPadding? systemGestureInsets,
     WindowPadding? padding,
+    GestureSettings? gestureSettings
   }) {
     return ViewConfiguration(
       window: window ?? this.window,
@@ -1019,6 +1058,7 @@ class ViewConfiguration {
       viewPadding: viewPadding ?? this.viewPadding,
       systemGestureInsets: systemGestureInsets ?? this.systemGestureInsets,
       padding: padding ?? this.padding,
+      gestureSettings: gestureSettings ?? this.gestureSettings,
     );
   }
 
@@ -1091,6 +1131,13 @@ class ViewConfiguration {
   /// phone sensor housings).
   final WindowPadding padding;
 
+  /// Additional configuration for touch gestures performed on this view.
+  ///
+  /// For example, the touch slop defined in physical pixels may be provided
+  /// by the gesture settings and should be preferred over the framework
+  /// touch slop constant.
+  final GestureSettings gestureSettings;
+
   @override
   String toString() {
     return '$runtimeType[window: $window, geometry: $geometry]';
@@ -1125,6 +1172,12 @@ enum FramePhase {
   ///
   /// See also [FrameTiming.rasterDuration].
   rasterFinish,
+
+  /// When the raster thread finished rasterizing a frame in wall-time.
+  ///
+  /// This is useful for correlating time raster finish time with the system
+  /// clock to integrate with other profiling tools.
+  rasterFinishWallTime,
 }
 
 /// Time-related performance metrics of a frame.
@@ -1145,19 +1198,25 @@ class FrameTiming {
   ///
   /// This constructor is used for unit test only. Real [FrameTiming]s should
   /// be retrieved from [PlatformDispatcher.onReportTimings].
+  ///
+  /// If the [frameNumber] is not provided, it defaults to `-1`.
   factory FrameTiming({
     required int vsyncStart,
     required int buildStart,
     required int buildFinish,
     required int rasterStart,
     required int rasterFinish,
+    required int rasterFinishWallTime,
+    int frameNumber = -1,
   }) {
     return FrameTiming._(<int>[
       vsyncStart,
       buildStart,
       buildFinish,
       rasterStart,
-      rasterFinish
+      rasterFinish,
+      rasterFinishWallTime,
+      frameNumber,
     ]);
   }
 
@@ -1169,7 +1228,7 @@ class FrameTiming {
   /// This constructor is usually only called by the Flutter engine, or a test.
   /// To get the [FrameTiming] of your app, see [PlatformDispatcher.onReportTimings].
   FrameTiming._(this._timestamps)
-      : assert(_timestamps.length == FramePhase.values.length);
+      : assert(_timestamps.length == FramePhase.values.length + 1);
 
   /// This is a raw timestamp in microseconds from some epoch. The epoch in all
   /// [FrameTiming] is the same, but it may not match [DateTime]'s epoch.
@@ -1214,13 +1273,16 @@ class FrameTiming {
   /// See also [vsyncOverhead], [buildDuration] and [rasterDuration].
   Duration get totalSpan => _rawDuration(FramePhase.rasterFinish) - _rawDuration(FramePhase.vsyncStart);
 
+  /// The frame key associated with this frame measurement.
+  int get frameNumber => _timestamps.last;
+
   final List<int> _timestamps;  // in microseconds
 
   String _formatMS(Duration duration) => '${duration.inMicroseconds * 0.001}ms';
 
   @override
   String toString() {
-    return '$runtimeType(buildDuration: ${_formatMS(buildDuration)}, rasterDuration: ${_formatMS(rasterDuration)}, vsyncOverhead: ${_formatMS(vsyncOverhead)}, totalSpan: ${_formatMS(totalSpan)})';
+    return '$runtimeType(buildDuration: ${_formatMS(buildDuration)}, rasterDuration: ${_formatMS(rasterDuration)}, vsyncOverhead: ${_formatMS(vsyncOverhead)}, totalSpan: ${_formatMS(totalSpan)}, frameNumber: ${_timestamps.last})';
   }
 }
 
