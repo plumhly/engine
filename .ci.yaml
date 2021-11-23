@@ -4,12 +4,10 @@
 # for every commit.
 #
 # More information at:
-#  * https://github.com/flutter/cocoon/blob/master/CI_YAML.md
+#  * https://github.com/flutter/cocoon/blob/main/CI_YAML.md
 enabled_branches:
-  - master
-  - dev
-  - beta
-  - stable
+  - main
+  - flutter-\\d+\\.\\d+-candidate\\.\\d+
 
 platform_properties:
   linux:
@@ -30,12 +28,14 @@ platform_properties:
       caches: >-
         [
           {"name":"builder_linux_engine","path":"builder"},
+          {"name":"gradle","path":"gradle"},
           {"name":"openjdk","path":"java"}
         ]
       # CIPD flutter_internal/java/openjdk/$platform
       dependencies: >-
         [
-          {"dependency": "open_jdk", "version": "version:1.8.0u202-b08"}
+          {"dependency": "open_jdk", "version": "version:1.8.0u202-b08"},
+          {"dependency": "gradle_cache"}
         ]
       device_type: none
       os: Linux
@@ -125,6 +125,10 @@ targets:
     bringup: true # Recipe issue https://github.com/flutter/flutter/issues/86427
     recipe: engine/scenarios
     properties:
+      dependencies: >-
+        [
+          {"dependency": "android_virtual_device", "version": "31"}
+        ]
       upload_packages: "true"
       clobber: "true"
     timeout: 60
@@ -132,11 +136,21 @@ targets:
 
   - name: Linux Benchmarks
     enabled_branches:
+      - main
       - master
     recipe: engine/engine_metrics
     presubmit: false
     properties:
       build_host: "true"
+      upload_metrics: "true"
+    timeout: 60
+    scheduler: luci
+
+  - name: Linux Benchmarks (no-upload)
+    recipe: engine/engine_metrics
+    properties:
+      build_host: "true"
+      upload_metrics: "false"
     timeout: 60
     scheduler: luci
 
@@ -160,6 +174,9 @@ targets:
 
   - name: Linux Framework Smoke Tests
     recipe: engine/framework_smoke
+    enabled_branches:
+      - main
+      - master
     timeout: 60
     scheduler: luci
 
@@ -191,6 +208,10 @@ targets:
     properties:
       add_recipes_cq: "true"
       gcs_goldens_bucket: flutter_logs
+      dependencies: >-
+        [
+          {"dependency": "goldctl"}
+        ]
     timeout: 60
     scheduler: luci
     runIf:
@@ -203,6 +224,9 @@ targets:
 
   - name: Linux Web Framework tests
     recipe: engine/web_engine_framework
+    enabled_branches:
+      - main
+      - master
     properties:
       add_recipes_cq: "true"
       framework: "true"
@@ -257,6 +281,10 @@ targets:
     recipe: web_engine
     properties:
       gcs_goldens_bucket: flutter_logs
+      dependencies: >-
+        [
+          {"dependency": "goldctl"}
+        ]
     timeout: 60
     scheduler: luci
     runIf:
@@ -266,6 +294,33 @@ targets:
       - tools/**
       - ci/**
       - flutter_frontend_server/**
+
+  - name: Mac mac_ios_engine
+    recipe: engine_v2/engine_v2
+    bringup: true
+    timeout: 60
+    properties:
+      config_name: mac_ios_engine
+      environment: Staging
+    scheduler: luci
+
+  - name:  Mac mac_ios_engine_profile
+    recipe: engine_v2/engine_v2
+    bringup: true
+    timeout: 60
+    properties:
+      config_name: mac_ios_engine_profile
+      environment: Staging
+    scheduler: luci
+
+  - name:  Mac mac_ios_engine_release
+    recipe: engine_v2/engine_v2
+    bringup: true
+    timeout: 60
+    properties:
+      config_name: mac_ios_engine_release
+      environment: Staging
+    scheduler: luci
 
   - name: Windows Android AOT Engine
     recipe: engine
@@ -282,6 +337,24 @@ targets:
     properties:
       add_recipes_cq: "true"
       build_host: "true"
+    scheduler: luci
+
+  - name: Windows windows_android_aot_engine
+    recipe: engine_v2/engine_v2
+    bringup: true
+    timeout: 60
+    properties:
+      config_name: windows_android_aot_engine
+      environment: Staging
+    scheduler: luci
+
+  - name: Windows windows_host_engine
+    recipe: engine_v2/engine_v2
+    bringup: true
+    timeout: 60
+    properties:
+      config_name: windows_host_engine
+      environment: Staging
     scheduler: luci
 
   - name: Windows Unopt

@@ -67,6 +67,11 @@ enum { PROP_FLUTTER_PROJECT = 1, PROP_LAST };
 static void fl_view_plugin_registry_iface_init(
     FlPluginRegistryInterface* iface);
 
+static gboolean text_input_im_filter_by_gtk(GtkIMContext* im_context,
+                                            gpointer gdk_event);
+
+static void redispatch_key_event_by_gtk(gpointer gdk_event);
+
 G_DEFINE_TYPE_WITH_CODE(
     FlView,
     fl_view,
@@ -81,6 +86,33 @@ static void fl_view_update_semantics_node_cb(FlEngine* engine,
 
   fl_accessibility_plugin_handle_update_semantics_node(
       self->accessibility_plugin, node);
+}
+
+static void fl_view_init_keyboard(FlView* self) {
+  FlBinaryMessenger* messenger = fl_engine_get_binary_messenger(self->engine);
+  self->keyboard_manager = fl_keyboard_manager_new(
+      fl_text_input_plugin_new(messenger, self, text_input_im_filter_by_gtk),
+      redispatch_key_event_by_gtk);
+  // The embedder responder must be added before the channel responder.
+  fl_keyboard_manager_add_responder(
+      self->keyboard_manager,
+      FL_KEY_RESPONDER(fl_key_embedder_responder_new(self->engine)));
+  fl_keyboard_manager_add_responder(
+      self->keyboard_manager,
+      FL_KEY_RESPONDER(fl_key_channel_responder_new(messenger)));
+}
+
+// Invoked by the engine right before the engine is restarted.
+//
+// This method should reset states to be as if the engine had just been started,
+// which usually indicates the user has requested a hot restart (Shift-R in the
+// Flutter CLI.)
+static void fl_view_on_pre_engine_restart_cb(FlEngine* engine,
+                                             gpointer user_data) {
+  FlView* self = FL_VIEW(user_data);
+
+  g_clear_object(&self->keyboard_manager);
+  fl_view_init_keyboard(self);
 }
 
 // Converts a GDK button event into a Flutter event and sends it to the engine.
@@ -153,18 +185,14 @@ static FlPluginRegistrar* fl_view_get_registrar_for_plugin(
   FlView* self = FL_VIEW(registry);
 
   return fl_plugin_registrar_new(self,
-                                 fl_engine_get_binary_messenger(self->engine));
+                                 fl_engine_get_binary_messenger(self->engine),
+                                 fl_engine_get_texture_registrar(self->engine));
 }
 
 static void fl_view_plugin_registry_iface_init(
     FlPluginRegistryInterface* iface) {
   iface->get_registrar_for_plugin = fl_view_get_registrar_for_plugin;
 }
-
-static void redispatch_key_event_by_gtk(gpointer gdk_event);
-
-static gboolean text_input_im_filter_by_gtk(GtkIMContext* im_context,
-                                            gpointer gdk_event);
 
 static gboolean event_box_button_release_event(GtkWidget* widget,
                                                GdkEventButton* event,
@@ -197,20 +225,13 @@ static void fl_view_constructed(GObject* object) {
   self->engine = fl_engine_new(self->project, self->renderer);
   fl_engine_set_update_semantics_node_handler(
       self->engine, fl_view_update_semantics_node_cb, self, nullptr);
+  fl_engine_set_on_pre_engine_restart_handler(
+      self->engine, fl_view_on_pre_engine_restart_cb, self, nullptr);
 
   // Create system channel handlers.
   FlBinaryMessenger* messenger = fl_engine_get_binary_messenger(self->engine);
   self->accessibility_plugin = fl_accessibility_plugin_new(self);
-  self->keyboard_manager = fl_keyboard_manager_new(
-      fl_text_input_plugin_new(messenger, self, text_input_im_filter_by_gtk),
-      redispatch_key_event_by_gtk);
-  // The embedder responder must be added before the channel responder.
-  fl_keyboard_manager_add_responder(
-      self->keyboard_manager,
-      FL_KEY_RESPONDER(fl_key_embedder_responder_new(self->engine)));
-  fl_keyboard_manager_add_responder(
-      self->keyboard_manager,
-      FL_KEY_RESPONDER(fl_key_channel_responder_new(messenger)));
+  fl_view_init_keyboard(self);
   self->mouse_cursor_plugin = fl_mouse_cursor_plugin_new(messenger, self);
   self->platform_plugin = fl_platform_plugin_new(messenger);
 
@@ -287,6 +308,8 @@ static void fl_view_dispose(GObject* object) {
   if (self->engine != nullptr) {
     fl_engine_set_update_semantics_node_handler(self->engine, nullptr, nullptr,
                                                 nullptr);
+    fl_engine_set_on_pre_engine_restart_handler(self->engine, nullptr, nullptr,
+                                                nullptr);
   }
 
   g_clear_object(&self->project);
@@ -352,8 +375,9 @@ static void fl_view_get_preferred_width(GtkWidget* widget,
        iterator = iterator->next) {
     FlViewChild* child = reinterpret_cast<FlViewChild*>(iterator->data);
 
-    if (!gtk_widget_get_visible(child->widget))
+    if (!gtk_widget_get_visible(child->widget)) {
       continue;
+    }
 
     gtk_widget_get_preferred_width(child->widget, &child_min, &child_nat);
 
@@ -375,8 +399,9 @@ static void fl_view_get_preferred_height(GtkWidget* widget,
        iterator = iterator->next) {
     FlViewChild* child = reinterpret_cast<FlViewChild*>(iterator->data);
 
-    if (!gtk_widget_get_visible(child->widget))
+    if (!gtk_widget_get_visible(child->widget)) {
       continue;
+    }
 
     gtk_widget_get_preferred_height(child->widget, &child_min, &child_nat);
 
@@ -393,17 +418,19 @@ static void fl_view_size_allocate(GtkWidget* widget,
   gtk_widget_set_allocation(widget, allocation);
 
   if (gtk_widget_get_has_window(widget)) {
-    if (gtk_widget_get_realized(widget))
+    if (gtk_widget_get_realized(widget)) {
       gdk_window_move_resize(gtk_widget_get_window(widget), allocation->x,
                              allocation->y, allocation->width,
                              allocation->height);
+    }
   }
 
   for (GList* iterator = self->children_list; iterator;
        iterator = iterator->next) {
     FlViewChild* child = reinterpret_cast<FlViewChild*>(iterator->data);
-    if (!gtk_widget_get_visible(child->widget))
+    if (!gtk_widget_get_visible(child->widget)) {
       continue;
+    }
 
     GtkAllocation child_allocation = child->geometry;
     GtkRequisition child_requisition;
@@ -735,10 +762,11 @@ static void fl_view_add_pending_child(FlView* self,
                                       GdkRectangle* geometry) {
   FlViewChild* child = g_new(FlViewChild, 1);
   child->widget = widget;
-  if (geometry)
+  if (geometry) {
     child->geometry = *geometry;
-  else
+  } else {
     child->geometry = {0, 0, 0, 0};
+  }
 
   self->pending_children_list =
       g_list_append(self->pending_children_list, child);
@@ -773,8 +801,9 @@ void fl_view_add_widget(FlView* view,
 GList* find_child(GList* list, GtkWidget* widget) {
   for (GList* i = list; i; i = i->next) {
     FlViewChild* child = reinterpret_cast<FlViewChild*>(i->data);
-    if (child && child->widget == widget)
+    if (child && child->widget == widget) {
       return i;
+    }
   }
   return nullptr;
 }

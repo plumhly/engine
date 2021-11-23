@@ -31,33 +31,8 @@ class EngineLineMetrics implements ui.LineMetrics {
         endIndex = -1,
         endIndexWithoutNewlines = -1,
         widthWithTrailingSpaces = width,
-        boxes = null;
-
-  EngineLineMetrics.withText(
-    String this.displayText, {
-    required this.startIndex,
-    required this.endIndex,
-    required this.endIndexWithoutNewlines,
-    required this.hardBreak,
-    required this.width,
-    required this.widthWithTrailingSpaces,
-    required this.left,
-    required this.lineNumber,
-  })  : assert(displayText != null), // ignore: unnecessary_null_comparison,
-        assert(startIndex != null), // ignore: unnecessary_null_comparison
-        assert(endIndex != null), // ignore: unnecessary_null_comparison
-        assert(endIndexWithoutNewlines != null), // ignore: unnecessary_null_comparison
-        assert(hardBreak != null), // ignore: unnecessary_null_comparison
-        assert(width != null), // ignore: unnecessary_null_comparison
-        assert(left != null), // ignore: unnecessary_null_comparison
-        assert(lineNumber != null && lineNumber >= 0), // ignore: unnecessary_null_comparison
-        ellipsis = null,
-        ascent = double.infinity,
-        descent = double.infinity,
-        unscaledAscent = double.infinity,
-        height = double.infinity,
-        baseline = double.infinity,
-        boxes = null;
+        boxes = <RangeBox>[],
+        spaceBoxCount = 0;
 
   EngineLineMetrics.rich(
     this.lineNumber, {
@@ -74,6 +49,7 @@ class EngineLineMetrics implements ui.LineMetrics {
     required this.ascent,
     required this.descent,
     required this.boxes,
+    required this.spaceBoxCount,
   })  : displayText = null,
         unscaledAscent = double.infinity;
 
@@ -101,7 +77,10 @@ class EngineLineMetrics implements ui.LineMetrics {
 
   /// The list of boxes representing the entire line, possibly across multiple
   /// spans.
-  final List<RangeBox>? boxes;
+  final List<RangeBox> boxes;
+
+  /// The number of boxes that are space-only.
+  final int spaceBoxCount;
 
   @override
   final bool hardBreak;
@@ -268,19 +247,19 @@ class EngineParagraphStyle implements ui.ParagraphStyle {
   double? get lineHeight {
     // TODO(mdebbar): Implement proper support for strut styles.
     // https://github.com/flutter/flutter/issues/32243
-    if (_strutStyle == null ||
-        _strutStyle!._height == null ||
-        _strutStyle!._height == 0) {
+    final EngineStrutStyle? strutStyle = _strutStyle;
+    final double? strutHeight = strutStyle?._height;
+    if (strutStyle == null || strutHeight == null || strutHeight == 0) {
       // When there's no strut height, always use paragraph style height.
       return height;
     }
-    if (_strutStyle!._forceStrutHeight == true) {
+    if (strutStyle._forceStrutHeight == true) {
       // When strut height is forced, ignore paragraph style height.
-      return _strutStyle!._height;
+      return strutHeight;
     }
     // In this case, strut height acts as a minimum height for all parts of the
     // paragraph. So we take the max of strut height and paragraph style height.
-    return math.max(_strutStyle!._height!, height ?? 0.0);
+    return math.max(strutHeight, height ?? 0.0);
   }
 
   @override
@@ -324,6 +303,8 @@ class EngineParagraphStyle implements ui.ParagraphStyle {
   @override
   String toString() {
     if (assertionsEnabled) {
+      final double? fontSize = this.fontSize;
+      final double? height = this.height;
       return 'ParagraphStyle('
           'textAlign: ${textAlign ?? "unspecified"}, '
           'textDirection: ${textDirection ?? "unspecified"}, '
@@ -332,8 +313,8 @@ class EngineParagraphStyle implements ui.ParagraphStyle {
           'maxLines: ${maxLines ?? "unspecified"}, '
           'textHeightBehavior: ${_textHeightBehavior ?? "unspecified"}, '
           'fontFamily: ${fontFamily ?? "unspecified"}, '
-          'fontSize: ${fontSize != null ? fontSize!.toStringAsFixed(1) : "unspecified"}, '
-          'height: ${height != null ? "${height!.toStringAsFixed(1)}x" : "unspecified"}, '
+          'fontSize: ${fontSize != null ? fontSize.toStringAsFixed(1) : "unspecified"}, '
+          'height: ${height != null ? "${height.toStringAsFixed(1)}x" : "unspecified"}, '
           'ellipsis: ${ellipsis != null ? "\"$ellipsis\"" : "unspecified"}, '
           'locale: ${locale ?? "unspecified"}'
           ')';
@@ -533,6 +514,9 @@ class EngineTextStyle implements ui.TextStyle {
   @override
   String toString() {
     if (assertionsEnabled) {
+      final List<String>? fontFamilyFallback = this.fontFamilyFallback;
+      final double? fontSize = this.fontSize;
+      final double? height = this.height;
       return 'TextStyle('
           'color: ${color ?? "unspecified"}, '
           'decoration: ${decoration ?? "unspecified"}, '
@@ -543,11 +527,11 @@ class EngineTextStyle implements ui.TextStyle {
           'fontStyle: ${fontStyle ?? "unspecified"}, '
           'textBaseline: ${textBaseline ?? "unspecified"}, '
           'fontFamily: ${isFontFamilyProvided && fontFamily != '' ? fontFamily : "unspecified"}, '
-          'fontFamilyFallback: ${isFontFamilyProvided && fontFamilyFallback != null && fontFamilyFallback!.isNotEmpty ? fontFamilyFallback : "unspecified"}, '
-          'fontSize: ${fontSize != null ? fontSize!.toStringAsFixed(1) : "unspecified"}, '
+          'fontFamilyFallback: ${isFontFamilyProvided && fontFamilyFallback != null && fontFamilyFallback.isNotEmpty ? fontFamilyFallback : "unspecified"}, '
+          'fontSize: ${fontSize != null ? fontSize.toStringAsFixed(1) : "unspecified"}, '
           'letterSpacing: ${letterSpacing != null ? "${letterSpacing}x" : "unspecified"}, '
           'wordSpacing: ${wordSpacing != null ? "${wordSpacing}x" : "unspecified"}, '
-          'height: ${height != null ? "${height!.toStringAsFixed(1)}x" : "unspecified"}, '
+          'height: ${height != null ? "${height.toStringAsFixed(1)}x" : "unspecified"}, '
           'locale: ${locale ?? "unspecified"}, '
           'background: ${background ?? "unspecified"}, '
           'foreground: ${foreground ?? "unspecified"}, '
@@ -722,8 +706,9 @@ void applyTextStyleToElement({
   if (style.height != null) {
     cssStyle.lineHeight = '${style.height}';
   }
-  if (style.fontSize != null) {
-    cssStyle.fontSize = '${style.fontSize!.floor()}px';
+  final double? fontSize = style.fontSize;
+  if (fontSize != null) {
+    cssStyle.fontSize = '${fontSize.floor()}px';
   }
   if (style.fontWeight != null) {
     cssStyle.fontWeight = fontWeightToCss(style.fontWeight);
@@ -748,8 +733,9 @@ void applyTextStyleToElement({
   if (style.decoration != null) {
     updateDecoration = true;
   }
-  if (style.shadows != null) {
-    cssStyle.textShadow = _shadowListToCss(style.shadows!);
+  final List<ui.Shadow>? shadows = style.shadows;
+  if (shadows != null) {
+    cssStyle.textShadow = _shadowListToCss(shadows);
   }
 
   if (updateDecoration) {

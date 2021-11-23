@@ -23,8 +23,7 @@ RasterThreadMerger::RasterThreadMerger(
     fml::TaskQueueId gpu_queue_id)
     : platform_queue_id_(platform_queue_id),
       gpu_queue_id_(gpu_queue_id),
-      shared_merger_(shared_merger),
-      enabled_(true) {}
+      shared_merger_(shared_merger) {}
 
 void RasterThreadMerger::SetMergeUnmergeCallback(const fml::closure& callback) {
   merge_unmerge_callback_ = callback;
@@ -92,7 +91,9 @@ bool RasterThreadMerger::IsOnPlatformThread() const {
   return MessageLoop::GetCurrentTaskQueueId() == platform_queue_id_;
 }
 
-bool RasterThreadMerger::IsOnRasterizingThread() const {
+bool RasterThreadMerger::IsOnRasterizingThread() {
+  std::scoped_lock lock(mutex_);
+
   if (IsMergedUnSafe()) {
     return IsOnPlatformThread();
   } else {
@@ -119,12 +120,12 @@ bool RasterThreadMerger::IsMerged() {
 
 void RasterThreadMerger::Enable() {
   std::scoped_lock lock(mutex_);
-  enabled_ = true;
+  shared_merger_->SetEnabledUnSafe(true);
 }
 
 void RasterThreadMerger::Disable() {
   std::scoped_lock lock(mutex_);
-  enabled_ = false;
+  shared_merger_->SetEnabledUnSafe(false);
 }
 
 bool RasterThreadMerger::IsEnabled() {
@@ -133,7 +134,7 @@ bool RasterThreadMerger::IsEnabled() {
 }
 
 bool RasterThreadMerger::IsEnabledUnSafe() const {
-  return enabled_;
+  return shared_merger_->IsEnabledUnSafe();
 }
 
 bool RasterThreadMerger::IsMergedUnSafe() const {

@@ -89,7 +89,7 @@ class RasterThreadMerger
   // Returns true if the current thread owns rasterizing.
   // When the threads are merged, platform thread owns rasterizing.
   // When un-merged, raster thread owns rasterizing.
-  bool IsOnRasterizingThread() const;
+  bool IsOnRasterizingThread();
 
   // Returns true if the current thread is the platform thread.
   bool IsOnPlatformThread() const;
@@ -127,7 +127,6 @@ class RasterThreadMerger
   std::condition_variable merged_condition_;
   std::mutex mutex_;
   fml::closure merge_unmerge_callback_;
-  bool enabled_;
 
   bool IsMergedUnSafe() const;
 

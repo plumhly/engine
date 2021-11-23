@@ -12,8 +12,6 @@ import 'package:ui/ui.dart' as ui;
 
 import 'common.dart';
 
-const MethodCodec codec = StandardMethodCodec();
-
 void main() {
   internalBootstrapBrowserTest(() => testMain);
 }
@@ -31,7 +29,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'view-0',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -67,7 +65,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'view-0',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -105,7 +103,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'view-0',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -150,7 +148,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'view-0',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -177,7 +175,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'view-0',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -213,12 +211,12 @@ void testMain() {
 
       // Initialize all platform views to be used in the test.
       final List<int> platformViewIds = <int>[];
-      for (int i = 0; i < HtmlViewEmbedder.maximumOverlaySurfaces * 2; i++) {
+      for (int i = 0; i < configuration.canvasKitMaximumSurfaces * 2; i++) {
         ui.platformViewRegistry.registerViewFactory(
           'test-platform-view',
           (int viewId) => html.DivElement()..id = 'view-$i',
         );
-        await _createPlatformView(i, 'test-platform-view');
+        await createPlatformView(i, 'test-platform-view');
         platformViewIds.add(i);
       }
 
@@ -242,8 +240,8 @@ void testMain() {
       // Frame 1:
       //   Render: up to cache size platform views.
       //   Expect: main canvas plus platform view overlays.
-      renderTestScene(viewCount: HtmlViewEmbedder.maximumOverlaySurfaces);
-      expect(countCanvases(), HtmlViewEmbedder.maximumOverlaySurfaces);
+      renderTestScene(viewCount: configuration.canvasKitMaximumSurfaces);
+      expect(countCanvases(), configuration.canvasKitMaximumSurfaces);
 
       // Frame 2:
       //   Render: zero platform views.
@@ -256,15 +254,15 @@ void testMain() {
       //   Render: less than cache size platform views.
       //   Expect: overlays reused.
       await Future<void>.delayed(Duration.zero);
-      renderTestScene(viewCount: HtmlViewEmbedder.maximumOverlaySurfaces - 2);
-      expect(countCanvases(), HtmlViewEmbedder.maximumOverlaySurfaces - 1);
+      renderTestScene(viewCount: configuration.canvasKitMaximumSurfaces - 2);
+      expect(countCanvases(), configuration.canvasKitMaximumSurfaces - 1);
 
       // Frame 4:
       //   Render: more platform views than max cache size.
       //   Expect: main canvas, backup overlay, maximum overlays.
       await Future<void>.delayed(Duration.zero);
-      renderTestScene(viewCount: HtmlViewEmbedder.maximumOverlaySurfaces * 2);
-      expect(countCanvases(), HtmlViewEmbedder.maximumOverlaySurfaces);
+      renderTestScene(viewCount: configuration.canvasKitMaximumSurfaces * 2);
+      expect(countCanvases(), configuration.canvasKitMaximumSurfaces);
 
       // Frame 5:
       //   Render: zero platform views.
@@ -303,7 +301,7 @@ void testMain() {
       // Frame 7:
       //   Render: a platform view after error.
       //   Expect: success. Just checking the system is not left in a corrupted state.
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
       renderTestScene(viewCount: 0);
       // TODO(yjbanov): skipped due to https://github.com/flutter/flutter/issues/73867
     }, skip: isSafari);
@@ -321,7 +319,7 @@ void testMain() {
           'test-platform-view',
           (int viewId) => html.DivElement()..id = 'view-$i',
         );
-        await _createPlatformView(i, 'test-platform-view');
+        await createPlatformView(i, 'test-platform-view');
         platformViewIds.add(i);
       }
 
@@ -346,21 +344,21 @@ void testMain() {
       //   Render: Views 1-10
       //   Expect: main canvas plus platform view overlays; empty cache.
       renderTestScene(<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-      expect(countCanvases(), HtmlViewEmbedder.maximumOverlaySurfaces);
+      expect(countCanvases(), configuration.canvasKitMaximumSurfaces);
 
       // Frame 2:
       //   Render: Views 2-11
       //   Expect: main canvas plus platform view overlays; empty cache.
       await Future<void>.delayed(Duration.zero);
       renderTestScene(<int>[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-      expect(countCanvases(), HtmlViewEmbedder.maximumOverlaySurfaces);
+      expect(countCanvases(), configuration.canvasKitMaximumSurfaces);
 
       // Frame 3:
       //   Render: Views 3-12
       //   Expect: main canvas plus platform view overlays; empty cache.
       await Future<void>.delayed(Duration.zero);
       renderTestScene(<int>[3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-      expect(countCanvases(), HtmlViewEmbedder.maximumOverlaySurfaces);
+      expect(countCanvases(), configuration.canvasKitMaximumSurfaces);
 
       // TODO(yjbanov): skipped due to https://github.com/flutter/flutter/issues/73867
     }, skip: isSafari);
@@ -370,7 +368,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'view-0',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -389,7 +387,7 @@ void testMain() {
         isNotNull,
       );
 
-      await _disposePlatformView(0);
+      await disposePlatformView(0);
 
       sb = LayerSceneBuilder();
       sb.pushOffset(0, 0);
@@ -410,7 +408,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'view-0',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -430,7 +428,7 @@ void testMain() {
       );
 
       // Render a frame with a different platform view.
-      await _createPlatformView(1, 'test-platform-view');
+      await createPlatformView(1, 'test-platform-view');
       sb = LayerSceneBuilder();
       sb.pushOffset(0, 0);
       sb.addPlatformView(1, width: 10, height: 10);
@@ -468,7 +466,7 @@ void testMain() {
         'test-platform-view',
         (int viewId) => html.DivElement()..id = 'test-view',
       );
-      await _createPlatformView(0, 'test-platform-view');
+      await createPlatformView(0, 'test-platform-view');
 
       final EnginePlatformDispatcher dispatcher =
           ui.window.platformDispatcher as EnginePlatformDispatcher;
@@ -498,33 +496,151 @@ void testMain() {
       renderTestScene();
       expect(skPathDefs.childNodes, hasLength(1));
     });
+
+    test('diffViewList works in the expected case', () {
+      ViewListDiffResult? result = diffViewList(
+        <int>[1, 2, 3, 4, 5],
+        <int>[3, 4, 5, 6, 7],
+      );
+      expect(result, isNotNull);
+      expect(result!.viewsToAdd, <int>[6, 7]);
+      expect(result.viewsToRemove, <int>[1, 2]);
+      expect(result.addToBeginning, isFalse);
+
+      result = diffViewList(
+        <int>[3, 4, 5, 6, 7],
+        <int>[1, 2, 3, 4, 5],
+      );
+      expect(result, isNotNull);
+      expect(result!.viewsToAdd, <int>[1, 2]);
+      expect(result.viewsToRemove, <int>[6, 7]);
+      expect(result.addToBeginning, isTrue);
+      expect(result.viewToInsertBefore, 3);
+
+      result = diffViewList(<int>[3, 4, 5], <int>[2, 3, 4, 5]);
+      expect(result, isNotNull);
+      expect(result!.viewsToAdd, <int>[2]);
+      expect(result.viewsToRemove, <int>[]);
+      expect(result.addToBeginning, isTrue);
+      expect(result.viewToInsertBefore, 3);
+
+      result = diffViewList(<int>[3, 4, 5], <int>[3, 4, 5, 6]);
+      expect(result, isNotNull);
+      expect(result!.viewsToAdd, <int>[6]);
+      expect(result.viewsToRemove, <int>[]);
+      expect(result.addToBeginning, isFalse);
+
+      result = diffViewList(<int>[3, 4, 5, 6], <int>[3, 4, 5]);
+      expect(result, isNotNull);
+      expect(result!.viewsToAdd, <int>[]);
+      expect(result.viewsToRemove, <int>[6]);
+      expect(result.addToBeginning, isTrue);
+      expect(result.viewToInsertBefore, 3);
+
+      result = diffViewList(<int>[3, 4, 5, 6], <int>[4, 5, 6]);
+      expect(result, isNotNull);
+      expect(result!.viewsToAdd, <int>[]);
+      expect(result.viewsToRemove, <int>[3]);
+      expect(result.addToBeginning, isFalse);
+
+      result = diffViewList(<int>[1, 2, 3], <int>[4, 5]);
+      expect(result, isNull);
+
+      result = diffViewList(<int>[1, 2, 3, 4], <int>[2, 3, 5, 4]);
+      expect(result, isNull);
+
+      result = diffViewList(<int>[3, 4], <int>[1, 2, 3, 4, 5, 6]);
+      expect(result, isNull);
+    });
+
+    test('does not crash when a prerolled platform view is not composited',
+        () async {
+      ui.platformViewRegistry.registerViewFactory(
+        'test-platform-view',
+        (int viewId) => html.DivElement()..id = 'view-0',
+      );
+      await createPlatformView(0, 'test-platform-view');
+
+      final EnginePlatformDispatcher dispatcher =
+          ui.window.platformDispatcher as EnginePlatformDispatcher;
+
+      final LayerSceneBuilder sb = LayerSceneBuilder();
+      sb.pushOffset(0, 0);
+      sb.pushClipRect(ui.Rect.zero);
+      sb.addPlatformView(0, width: 10, height: 10);
+      sb.pop();
+      // The below line should not throw an error.
+      dispatcher.rasterizer!.draw(sb.build().layerTree);
+      expect(
+          domRenderer.glassPaneShadow!
+              .querySelectorAll('flt-platform-view-slot'),
+          isEmpty);
+    });
+
+    test('does not crash when overlays are disabled', () async {
+      HtmlViewEmbedder.debugDisableOverlays = true;
+      ui.platformViewRegistry.registerViewFactory(
+        'test-platform-view',
+        (int viewId) => html.DivElement()..id = 'view-0',
+      );
+      await createPlatformView(0, 'test-platform-view');
+
+      final EnginePlatformDispatcher dispatcher =
+          ui.window.platformDispatcher as EnginePlatformDispatcher;
+
+      final LayerSceneBuilder sb = LayerSceneBuilder();
+      sb.pushOffset(0, 0);
+      sb.addPlatformView(0, width: 10, height: 10);
+      sb.pop();
+      // The below line should not throw an error.
+      dispatcher.rasterizer!.draw(sb.build().layerTree);
+      expect(
+          domRenderer.glassPaneShadow!
+              .querySelectorAll('flt-platform-view-slot'),
+          hasLength(1));
+      HtmlViewEmbedder.debugDisableOverlays = false;
+    });
+
+    test(
+        'correctly renders when overlays are disabled and a subset '
+        'of views is used', () async {
+      HtmlViewEmbedder.debugDisableOverlays = true;
+      ui.platformViewRegistry.registerViewFactory(
+        'test-platform-view',
+        (int viewId) => html.DivElement()..id = 'view-0',
+      );
+      await createPlatformView(0, 'test-platform-view');
+      await createPlatformView(1, 'test-platform-view');
+
+      final EnginePlatformDispatcher dispatcher =
+          ui.window.platformDispatcher as EnginePlatformDispatcher;
+
+      LayerSceneBuilder sb = LayerSceneBuilder();
+      sb.pushOffset(0, 0);
+      sb.addPlatformView(0, width: 10, height: 10);
+      sb.addPlatformView(1, width: 10, height: 10);
+      sb.pop();
+      // The below line should not throw an error.
+      dispatcher.rasterizer!.draw(sb.build().layerTree);
+
+      expect(
+          domRenderer.glassPaneShadow!
+              .querySelectorAll('flt-platform-view-slot'),
+          hasLength(2));
+
+      sb = LayerSceneBuilder();
+      sb.pushOffset(0, 0);
+      sb.addPlatformView(1, width: 10, height: 10);
+      sb.pop();
+      // The below line should not throw an error.
+      dispatcher.rasterizer!.draw(sb.build().layerTree);
+      expect(
+          domRenderer.glassPaneShadow!
+              .querySelectorAll('flt-platform-view-slot'),
+          hasLength(1));
+
+      HtmlViewEmbedder.debugDisableOverlays = false;
+    });
     // TODO(dit): https://github.com/flutter/flutter/issues/60040
   }, skip: isIosSafari);
-}
-
-// Sends a platform message to create a Platform View with the given id and viewType.
-Future<void> _createPlatformView(int id, String viewType) {
-  final Completer<void> completer = Completer<void>();
-  window.sendPlatformMessage(
-    'flutter/platform_views',
-    codec.encodeMethodCall(MethodCall(
-      'create',
-      <String, dynamic>{
-        'id': id,
-        'viewType': viewType,
-      },
-    )),
-    (dynamic _) => completer.complete(),
-  );
-  return completer.future;
-}
-
-Future<void> _disposePlatformView(int id) {
-  final Completer<void> completer = Completer<void>();
-  window.sendPlatformMessage(
-    'flutter/platform_views',
-    codec.encodeMethodCall(MethodCall('dispose', id)),
-    (dynamic _) => completer.complete(),
-  );
-  return completer.future;
 }

@@ -12,7 +12,7 @@ library engine;
 // 2. Exports of engine/* files are replaced with a part directive.
 //
 // The code that performs the transformations lives in:
-// - https://github.com/flutter/engine/blob/master/web_sdk/sdk_rewriter.dart
+// - https://github.com/flutter/engine/blob/main/web_sdk/sdk_rewriter.dart
 
 import 'dart:async';
 // Some of these names are used in services/buffers.dart for example.
@@ -37,6 +37,8 @@ import 'package:meta/meta.dart';
 
 import '../ui.dart' as ui;
 
+// ignore: unused_import
+import 'engine/configuration.dart';
 import 'engine/dom_renderer.dart';
 import 'engine/keyboard.dart';
 import 'engine/mouse_cursor.dart';
@@ -73,6 +75,10 @@ export 'engine/canvaskit/fonts.dart';
 export 'engine/canvaskit/image.dart';
 
 export 'engine/canvaskit/image_filter.dart';
+
+export 'engine/canvaskit/image_wasm_codecs.dart';
+
+export 'engine/canvaskit/image_web_codecs.dart';
 
 export 'engine/canvaskit/initialization.dart';
 
@@ -119,6 +125,8 @@ export 'engine/canvaskit/vertices.dart';
 export 'engine/clipboard.dart';
 
 export 'engine/color_filter.dart';
+
+export 'engine/configuration.dart';
 
 export 'engine/dom_renderer.dart';
 
@@ -359,6 +367,17 @@ final List<ui.VoidCallback> _hotRestartListeners = <ui.VoidCallback>[];
 /// Requests that [listener] is called just before hot restarting the app.
 void registerHotRestartListener(ui.VoidCallback listener) {
   _hotRestartListeners.add(listener);
+}
+
+/// Pretends that hot restart is about to happen.
+///
+/// Useful in tests to check that the engine performs appropriate clean-ups,
+/// such as removing static DOM listeners, prior to allowing the Dart runtime
+/// to re-initialize the program.
+void debugEmulateHotRestart() {
+  for (final ui.VoidCallback listener in _hotRestartListeners) {
+    listener();
+  }
 }
 
 /// This method performs one-time initialization of the Web environment that

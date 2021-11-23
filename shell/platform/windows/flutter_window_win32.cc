@@ -25,7 +25,7 @@ constexpr int kScrollOffsetMultiplier = 20;
 // Returns the arrow cursor for unknown constants.
 //
 // This map must be kept in sync with Flutter framework's
-// rendering/mouse_cursor.dart.
+// services/mouse_cursor.dart.
 static HCURSOR GetCursorByName(const std::string& cursor_name) {
   static auto* cursors = new std::map<std::string, const wchar_t*>{
       {"allScroll", IDC_SIZEALL},
@@ -211,6 +211,10 @@ void FlutterWindowWin32::OnComposeChange(const std::u16string& text,
   binding_handler_delegate_->OnComposeChange(text, cursor_pos);
 }
 
+void FlutterWindowWin32::OnUpdateSemanticsEnabled(bool enabled) {
+  binding_handler_delegate_->OnUpdateSemanticsEnabled(enabled);
+}
+
 void FlutterWindowWin32::OnScroll(double delta_x,
                                   double delta_y,
                                   FlutterPointerDeviceKind device_kind,
@@ -230,6 +234,10 @@ void FlutterWindowWin32::OnCursorRectUpdated(const Rect& rect) {
   Point origin(rect.left() * scale, rect.top() * scale);
   Size size(rect.width() * scale, rect.height() * scale);
   UpdateCursorRect(Rect(origin, size));
+}
+
+void FlutterWindowWin32::OnResetImeComposing() {
+  AbortImeComposing();
 }
 
 bool FlutterWindowWin32::OnBitmapSurfaceUpdated(const void* allocation,
