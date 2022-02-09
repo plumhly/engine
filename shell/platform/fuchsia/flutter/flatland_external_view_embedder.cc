@@ -258,16 +258,31 @@ void FlatlandExternalViewEmbedder::SubmitFrame(
             {static_cast<uint32_t>(surface_for_layer->GetSize().width()),
              static_cast<uint32_t>(surface_for_layer->GetSize().height())});
 
+        // Flutter Embedder lacks an API to detect if a layer has alpha or not.
+        // For now, we assume any layer beyond the first has alpha.
+        flatland_->flatland()->SetImageBlendingFunction(
+            {surface_for_layer->GetImageId()},
+            flatland_layer_index == 0
+                ? fuchsia::ui::composition::BlendMode::SRC
+                : fuchsia::ui::composition::BlendMode::SRC_OVER);
+
         // Attach the FlatlandLayer to the main scene graph.
         flatland_->flatland()->AddChild(
             root_transform_id_,
             flatland_layers_[flatland_layer_index].transform_id);
         child_transforms_.emplace_back(
             flatland_layers_[flatland_layer_index].transform_id);
+
+        // Attach full-screen hit testing shield.
+        flatland_->flatland()->SetHitRegions(
+            flatland_layers_[flatland_layer_index].transform_id,
+            {{{0, 0, std::numeric_limits<float>::max(),
+               std::numeric_limits<float>::max()},
+              fuchsia::ui::composition::HitTestInteraction::
+                  SEMANTICALLY_INVISIBLE}});
       }
 
       // Reset for the next pass:
-      //  +The next layer will not be the first layer.
       flatland_layer_index++;
     }
   }

@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 
 import android.content.Context;
 import android.content.res.AssetManager;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 import io.flutter.FlutterInjector;
 import io.flutter.embedding.engine.dart.DartExecutor.DartEntrypoint;
 import io.flutter.embedding.engine.loader.FlutterLoader;
@@ -32,14 +33,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 // It's a component test because it tests the FlutterEngineGroup its components such as the
 // FlutterEngine and the DartExecutor.
 @Config(manifest = Config.NONE)
-@RunWith(RobolectricTestRunner.class)
+@RunWith(AndroidJUnit4.class)
 public class FlutterEngineGroupComponentTest {
   @Mock FlutterJNI mockflutterJNI;
   @Mock FlutterLoader mockFlutterLoader;
@@ -51,7 +51,7 @@ public class FlutterEngineGroupComponentTest {
   public void setUp() {
     FlutterInjector.reset();
 
-    MockitoAnnotations.initMocks(this);
+    MockitoAnnotations.openMocks(this);
     jniAttached = false;
     when(mockflutterJNI.isAttached()).thenAnswer(invocation -> jniAttached);
     doAnswer(invocation -> jniAttached = true).when(mockflutterJNI).attachToNative();
@@ -165,7 +165,7 @@ public class FlutterEngineGroupComponentTest {
         .runBundleAndSnapshotFromLibrary(
             eq("some/path/to/flutter_assets"),
             eq("other entrypoint"),
-            isNull(String.class),
+            isNull(),
             any(AssetManager.class),
             nullable(List.class));
   }
@@ -215,7 +215,7 @@ public class FlutterEngineGroupComponentTest {
         .runBundleAndSnapshotFromLibrary(
             nullable(String.class),
             nullable(String.class),
-            isNull(String.class),
+            isNull(),
             any(AssetManager.class),
             eq(firstDartEntrypointArgs));
 

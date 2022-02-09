@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
@@ -22,6 +21,7 @@ import 'mouse_cursor.dart';
 import 'platform_views/message_handler.dart';
 import 'plugins.dart';
 import 'profiler.dart';
+import 'safe_browser_api.dart';
 import 'semantics.dart';
 import 'services.dart';
 import 'text_editing/text_editing.dart';
@@ -44,6 +44,7 @@ class EnginePlatformDispatcher extends ui.PlatformDispatcher {
   /// these.
   EnginePlatformDispatcher._() {
     _addBrightnessMediaQueryListener();
+    _addFontSizeObserver();
   }
 
   /// The [EnginePlatformDispatcher] singleton.
@@ -420,7 +421,7 @@ class EnginePlatformDispatcher extends ui.PlatformDispatcher {
             return;
           case 'HapticFeedback.vibrate':
             final String? type = decoded.arguments as String?;
-            _vibrate(_getHapticFeedbackDuration(type));
+            vibrate(_getHapticFeedbackDuration(type));
             replyToPlatformMessage(callback, codec.encodeSuccessEnvelope(true));
             return;
           case 'SystemChrome.setApplicationSwitcherDescription':
@@ -783,6 +784,54 @@ class EnginePlatformDispatcher extends ui.PlatformDispatcher {
   @override
   bool get alwaysUse24HourFormat => configuration.alwaysUse24HourFormat;
 
+  /// Updates [textScaleFactor] and invokes [onTextScaleFactorChanged] and
+  /// [onPlatformConfigurationChanged] callbacks if [textScaleFactor] changed.
+  void _updateTextScaleFactor(double value) {
+    if (configuration.textScaleFactor != value) {
+      _configuration = configuration.copyWith(textScaleFactor: value);
+      invokeOnPlatformConfigurationChanged();
+      invokeOnTextScaleFactorChanged();
+    }
+  }
+
+  /// Watches for font-size changes in the browser's <html> element to
+  /// recalculate [textScaleFactor].
+  ///
+  /// Updates [textScaleFactor] with the new value.
+  html.MutationObserver? _fontSizeObserver;
+
+  /// Set the callback function for updating [textScaleFactor] based on
+  /// font-size changes in the browser's <html> element.
+  void _addFontSizeObserver() {
+    const String styleAttribute = 'style';
+
+    _fontSizeObserver = html.MutationObserver(
+        (List<dynamic> mutations, html.MutationObserver _) {
+      for (final dynamic mutation in mutations) {
+        final html.MutationRecord record = mutation as html.MutationRecord;
+        if (record.type == 'attributes' &&
+            record.attributeName == styleAttribute) {
+          final double newTextScaleFactor = findBrowserTextScaleFactor();
+          _updateTextScaleFactor(newTextScaleFactor);
+        }
+      }
+    });
+    _fontSizeObserver!.observe(
+      html.document.documentElement!,
+      attributes: true,
+      attributeFilter: <String>[styleAttribute],
+    );
+    registerHotRestartListener(() {
+      _disconnectFontSizeObserver();
+    });
+  }
+
+  /// Remove the observer for font-size changes in the browser's <html> element.
+  void _disconnectFontSizeObserver() {
+    _fontSizeObserver?.disconnect();
+    _fontSizeObserver = null;
+  }
+
   /// A callback that is invoked whenever [textScaleFactor] changes value.
   ///
   /// The framework invokes this callback in the same zone in which the
@@ -984,7 +1033,7 @@ class EnginePlatformDispatcher extends ui.PlatformDispatcher {
   /// Lazily initialized when the `defaultRouteName` getter is invoked.
   ///
   /// The reason for the lazy initialization is to give enough time for the app
-  /// to set [locationStrategy] in `lib/src/ui/initialization.dart`.
+  /// to set [locationStrategy] in `lib/initialization.dart`.
   String? _defaultRouteName;
 
   @visibleForTesting
@@ -1091,44 +1140,6 @@ const double _defaultRootFontSize = 16.0;
 /// Finds the text scale factor of the browser by looking at the computed style
 /// of the browser's <html> element.
 double findBrowserTextScaleFactor() {
-  final num fontSize = _parseFontSize(html.document.documentElement!) ?? _defaultRootFontSize;
+  final num fontSize = parseFontSize(html.document.documentElement!) ?? _defaultRootFontSize;
   return fontSize / _defaultRootFontSize;
-}
-
-/// Parses the font size of [element] and returns the value without a unit.
-num? _parseFontSize(html.Element element) {
-  num? fontSize;
-
-  if (js_util.hasProperty(element, 'computedStyleMap')) {
-    // Use the newer `computedStyleMap` API available on some browsers.
-    final dynamic computedStyleMap =
-        // ignore: implicit_dynamic_function
-        js_util.callMethod(element, 'computedStyleMap', <Object?>[]);
-    if (computedStyleMap is Object) {
-      final dynamic fontSizeObject =
-          // ignore: implicit_dynamic_function
-          js_util.callMethod(computedStyleMap, 'get', <Object?>['font-size']);
-      if (fontSizeObject is Object) {
-        // ignore: implicit_dynamic_function
-        fontSize = js_util.getProperty(fontSizeObject, 'value') as num;
-      }
-    }
-  }
-
-  if (fontSize == null) {
-    // Fallback to `getComputedStyle`.
-    final String fontSizeString = element.getComputedStyle().fontSize;
-    fontSize = parseFloat(fontSizeString);
-  }
-
-  return fontSize;
-}
-
-/// Provides haptic feedback.
-void _vibrate(int durationMs) {
-  final html.Navigator navigator = html.window.navigator;
-  if (js_util.hasProperty(navigator, 'vibrate')) {
-    // ignore: implicit_dynamic_function
-    js_util.callMethod(navigator, 'vibrate', <num>[durationMs]);
-  }
 }

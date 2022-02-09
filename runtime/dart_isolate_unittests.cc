@@ -13,6 +13,7 @@
 #include "flutter/testing/dart_isolate_runner.h"
 #include "flutter/testing/fixture_test.h"
 #include "flutter/testing/testing.h"
+#include "third_party/dart/runtime/include/dart_api.h"
 #include "third_party/tonic/converter/dart_converter.h"
 #include "third_party/tonic/scopes/dart_isolate_scope.h"
 
@@ -70,83 +71,6 @@ TEST_F(DartIsolateTest, RootIsolateCreationAndShutdown) {
   auto root_isolate = weak_isolate.lock();
   ASSERT_TRUE(root_isolate);
   ASSERT_EQ(root_isolate->GetPhase(), DartIsolate::Phase::Running);
-  ASSERT_TRUE(root_isolate->Shutdown());
-}
-
-TEST_F(DartIsolateTest, SpawnIsolate) {
-  ASSERT_FALSE(DartVMRef::IsInstanceRunning());
-  auto settings = CreateSettingsForFixture();
-  auto vm_ref = DartVMRef::Create(settings);
-  ASSERT_TRUE(vm_ref);
-  auto vm_data = vm_ref.GetVMData();
-  ASSERT_TRUE(vm_data);
-  TaskRunners task_runners(GetCurrentTestName(),    //
-                           GetCurrentTaskRunner(),  //
-                           GetCurrentTaskRunner(),  //
-                           GetCurrentTaskRunner(),  //
-                           GetCurrentTaskRunner()   //
-  );
-
-  auto isolate_configuration =
-      IsolateConfiguration::InferFromSettings(settings);
-
-  UIDartState::Context context(std::move(task_runners));
-  context.advisory_script_uri = "main.dart";
-  context.advisory_script_entrypoint = "main";
-  auto weak_isolate = DartIsolate::CreateRunningRootIsolate(
-      vm_data->GetSettings(),              // settings
-      vm_data->GetIsolateSnapshot(),       // isolate snapshot
-      nullptr,                             // platform configuration
-      DartIsolate::Flags{},                // flags
-      nullptr,                             // root_isolate_create_callback
-      settings.isolate_create_callback,    // isolate create callback
-      settings.isolate_shutdown_callback,  // isolate shutdown callback
-      "main",                              // dart entrypoint
-      std::nullopt,                        // dart entrypoint library
-      {},                                  // dart entrypoint arguments
-      std::move(isolate_configuration),    // isolate configuration
-      std::move(context)                   // engine context
-  );
-  auto root_isolate = weak_isolate.lock();
-  ASSERT_TRUE(root_isolate);
-  ASSERT_EQ(root_isolate->GetPhase(), DartIsolate::Phase::Running);
-
-  auto spawn_configuration = IsolateConfiguration::InferFromSettings(settings);
-
-  auto weak_spawn = root_isolate->SpawnIsolate(
-      /*settings=*/vm_data->GetSettings(),
-      /*platform_configuration=*/nullptr,
-      /*snapshot_delegate=*/{},
-      /*advisory_script_uri=*/"main.dart",
-      /*advisory_script_entrypoint=*/"main",
-      /*flags=*/DartIsolate::Flags{},
-      /*isolate_create_callback=*/settings.isolate_create_callback,
-      /*isolate_shutdown_callback=*/settings.isolate_shutdown_callback,
-      /*dart_entrypoint=*/"main",
-      /*dart_entrypoint_library=*/std::nullopt,
-      /*dart_entrypoint_args=*/{},
-      /*isolate_configuration=*/std::move(spawn_configuration));
-  auto spawn = weak_spawn.lock();
-  ASSERT_TRUE(spawn);
-  ASSERT_EQ(spawn->GetPhase(), DartIsolate::Phase::Running);
-
-  // TODO(74520): Remove conditional once isolate groups are supported by JIT.
-  if (DartVM::IsRunningPrecompiledCode()) {
-    Dart_IsolateGroup isolate_group;
-    {
-      auto isolate_scope = tonic::DartIsolateScope(root_isolate->isolate());
-      isolate_group = Dart_CurrentIsolateGroup();
-    }
-    {
-      auto isolate_scope = tonic::DartIsolateScope(root_isolate->isolate());
-      Dart_IsolateGroup spawn_isolate_group = Dart_CurrentIsolateGroup();
-      ASSERT_TRUE(isolate_group != nullptr);
-      ASSERT_EQ(isolate_group, spawn_isolate_group);
-    }
-  }
-
-  ASSERT_TRUE(spawn->Shutdown());
-  ASSERT_TRUE(spawn->IsShuttingDown());
   ASSERT_TRUE(root_isolate->Shutdown());
 }
 
@@ -335,35 +259,29 @@ TEST_F(DartSecondaryIsolateTest, CanLaunchSecondaryIsolates) {
   // root isolate will be auto-shutdown
 }
 
-static thread_local bool is_engine_worker = false;
+/// Tests error handling path of `Isolate.spawn()` in the engine.
+class IsolateStartupFailureTest : public FixtureTest {
+ public:
+  IsolateStartupFailureTest() : latch_(1) {}
+  void NotifyDone() { latch_.CountDown(); }
+  void WaitForDone() { latch_.Wait(); }
 
-TEST_F(DartSecondaryIsolateTest, VMTasksRunOnEngineThreads) {
+ private:
+  fml::CountDownLatch latch_;
+  FML_DISALLOW_COPY_AND_ASSIGN(IsolateStartupFailureTest);
+};
+
+TEST_F(IsolateStartupFailureTest,
+       HandlesIsolateInitializationFailureCorrectly) {
+  AddNativeCallback("MakeNextIsolateSpawnFail",
+                    CREATE_NATIVE_ENTRY(([](Dart_NativeArguments args) {
+                      Dart_SetRootLibrary(Dart_Null());
+                    })));
   AddNativeCallback("NotifyNative",
-                    CREATE_NATIVE_ENTRY(([this](Dart_NativeArguments args) {
-                      LatchCountDown();
-                    })));
-  AddNativeCallback("PassMessage",
-                    CREATE_NATIVE_ENTRY(([this](Dart_NativeArguments args) {
-                      // Child isolate is running on concurrent message loop
-                      // worker.
-                      ASSERT_TRUE(is_engine_worker);
-                      LatchCountDown();
-                    })));
+                    CREATE_NATIVE_ENTRY(
+                        ([this](Dart_NativeArguments args) { NotifyDone(); })));
   auto settings = CreateSettingsForFixture();
-  settings.root_isolate_shutdown_callback = [this]() {
-    RootIsolateShutdownSignal();
-  };
-  settings.isolate_shutdown_callback = [this]() { ChildShutdownSignal(); };
   auto vm_ref = DartVMRef::Create(settings);
-
-  auto loop = vm_ref->GetConcurrentMessageLoop();
-  fml::CountDownLatch latch(loop->GetWorkerCount());
-  vm_ref->GetConcurrentMessageLoop()->PostTaskToAllWorkers([&] {
-    is_engine_worker = true;
-    latch.CountDown();
-  });
-  latch.Wait();
-
   auto thread = CreateNewThread();
   TaskRunners task_runners(GetCurrentTestName(),  //
                            thread,                //
@@ -372,17 +290,14 @@ TEST_F(DartSecondaryIsolateTest, VMTasksRunOnEngineThreads) {
                            thread                 //
   );
   auto isolate = RunDartCodeInIsolate(vm_ref, settings, task_runners,
-                                      "testCanLaunchSecondaryIsolate", {},
+                                      "testIsolateStartupFailure", {},
                                       GetDefaultKernelFilePath());
   ASSERT_TRUE(isolate);
   ASSERT_EQ(isolate->get()->GetPhase(), DartIsolate::Phase::Running);
-  ChildShutdownWait();  // wait for child isolate to shutdown first
-  ASSERT_FALSE(RootIsolateIsSignaled());
-  LatchWait();  // wait for last NotifyNative called by main isolate
-  // root isolate will be auto-shutdown
+  WaitForDone();
 }
 
-TEST_F(DartIsolateTest, CanRecieveArguments) {
+TEST_F(DartIsolateTest, CanReceiveArguments) {
   AddNativeCallback("NotifyNative",
                     CREATE_NATIVE_ENTRY(([this](Dart_NativeArguments args) {
                       ASSERT_TRUE(tonic::DartConverter<bool>::FromDart(

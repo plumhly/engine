@@ -10,6 +10,7 @@
 #import "flutter/shell/platform/darwin/common/framework/Headers/FlutterBinaryMessenger.h"
 #import "flutter/shell/platform/darwin/common/framework/Headers/FlutterMacros.h"
 #import "flutter/shell/platform/darwin/ios/framework/Headers/FlutterViewController.h"
+#import "flutter/shell/platform/darwin/ios/framework/Source/FlutterEmbedderKeyResponder.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterFakeKeyEvents.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterTextInputPlugin.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterViewController_Internal.h"
@@ -116,6 +117,15 @@ typedef enum UIAccessibilityContrast : NSInteger {
 @end
 #endif
 
+@interface FlutterKeyboardManager (Tests)
+@property(nonatomic, retain, readonly)
+    NSMutableArray<id<FlutterKeyPrimaryResponder>>* primaryResponders;
+@end
+
+@interface FlutterEmbedderKeyResponder (Tests)
+@property(nonatomic, copy, readonly) FlutterSendKeyEvent sendEvent;
+@end
+
 @interface FlutterViewController (Tests)
 - (void)surfaceUpdated:(BOOL)appeared;
 - (void)performOrientationUpdate:(UIInterfaceOrientationMask)new_preferences;
@@ -130,6 +140,7 @@ typedef enum UIAccessibilityContrast : NSInteger {
 - (void)startKeyBoardAnimation:(NSTimeInterval)duration;
 - (void)ensureViewportMetricsIsCorrect;
 - (void)invalidateDisplayLink;
+- (void)addInternalPlugins;
 @end
 
 @interface FlutterViewControllerTest : XCTestCase
@@ -357,9 +368,10 @@ typedef enum UIAccessibilityContrast : NSInteger {
                                                                                 nibName:nil
                                                                                  bundle:nil];
   mockEngine.viewController = viewController;
-  [viewController updateViewportMetrics];
   flutter::ViewportMetrics viewportMetrics;
-  OCMVerify([mockEngine updateViewportMetrics:viewportMetrics]);
+  OCMExpect([mockEngine updateViewportMetrics:viewportMetrics]).ignoringNonObjectArgs();
+  [viewController updateViewportMetrics];
+  OCMVerifyAll(mockEngine);
 }
 
 - (void)testViewDidLoadDoesntInvokeEngineWhenNotTheViewController {
@@ -389,6 +401,24 @@ typedef enum UIAccessibilityContrast : NSInteger {
   UIView* view = viewController.view;
   XCTAssertNotNil(view);
   OCMVerify([mockEngine attachView]);
+}
+
+- (void)testInternalPluginsWeakPtrNotCrash {
+  FlutterSendKeyEvent sendEvent;
+  @autoreleasepool {
+    FlutterViewController* vc = [[FlutterViewController alloc] initWithProject:nil
+                                                                       nibName:nil
+                                                                        bundle:nil];
+    [vc addInternalPlugins];
+    FlutterKeyboardManager* keyboardManager = vc.keyboardManager;
+    FlutterEmbedderKeyResponder* keyPrimaryResponder = (FlutterEmbedderKeyResponder*)
+        [(NSArray<id<FlutterKeyPrimaryResponder>>*)keyboardManager.primaryResponders firstObject];
+    sendEvent = [keyPrimaryResponder sendEvent];
+  }
+
+  if (sendEvent) {
+    sendEvent({}, nil, nil);
+  }
 }
 
 - (void)testBinaryMessenger {

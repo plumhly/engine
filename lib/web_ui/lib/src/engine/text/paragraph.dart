@@ -9,7 +9,6 @@ import 'package:ui/ui.dart' as ui;
 
 import '../browser_detection.dart';
 import '../embedder.dart';
-import '../html/bitmap_canvas.dart';
 import '../util.dart';
 import 'layout_service.dart';
 import 'ruler.dart';
@@ -180,31 +179,6 @@ class EngineLineMetrics implements ui.LineMetrics {
       return super.toString();
     }
   }
-}
-
-/// Common interface for all the implementations of [ui.Paragraph] in the web
-/// engine.
-abstract class EngineParagraph implements ui.Paragraph {
-  /// Whether this paragraph has been laid out or not.
-  bool get isLaidOut;
-
-  /// Whether this paragraph can be drawn on a bitmap canvas.
-  bool get drawOnCanvas;
-
-  /// Whether this paragraph is doing arbitrary paint operations that require
-  /// a bitmap canvas, and can't be expressed in a DOM canvas.
-  bool get hasArbitraryPaint;
-
-  void paint(BitmapCanvas canvas, ui.Offset offset);
-
-  /// Generates a flat string computed from all the spans of the paragraph.
-  String toPlainText();
-
-  /// Returns a DOM element that represents the entire paragraph and its
-  /// children.
-  ///
-  /// Generates a new DOM element on every invocation.
-  html.HtmlElement toDomElement();
 }
 
 /// The web implementation of [ui.ParagraphStyle].
@@ -696,7 +670,21 @@ void applyTextStyleToElement({
   final html.CssStyleDeclaration cssStyle = element.style;
 
   final ui.Color? color = style.foreground?.color ?? style.color;
-  if (color != null) {
+  if (style.foreground?.style == ui.PaintingStyle.stroke) {
+    // When comparing the outputs of the Bitmap Canvas and the DOM
+    // implementation, we have found, that we need to set the background color
+    // of the text to transparent to achieve the same effect as in the Bitmap
+    // Canvas and the Skia Engine where only the text stroke is painted.
+    // If we don't set it here to transparent, the text will inherit the color
+    // of it's parent element.
+    cssStyle.color = 'transparent';
+    // Use hairline (device pixel when strokeWidth is not specified).
+    final double? strokeWidth = style.foreground?.strokeWidth;
+    final double adaptedWidth = strokeWidth != null && strokeWidth > 0
+        ? strokeWidth
+        : 1.0 / ui.window.devicePixelRatio;
+    cssStyle.textStroke = '${adaptedWidth}px ${colorToCssString(color)}';
+  } else if (color != null) {
     cssStyle.color = colorToCssString(color);
   }
   final ui.Color? background = style.background?.color;

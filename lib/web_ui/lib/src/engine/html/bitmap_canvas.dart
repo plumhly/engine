@@ -16,7 +16,7 @@ import '../engine_canvas.dart';
 import '../frame_reference.dart';
 import '../html_image_codec.dart';
 import '../platform_dispatcher.dart';
-import '../text/paragraph.dart';
+import '../text/canvas_paragraph.dart';
 import '../util.dart';
 import '../vector_math.dart';
 import '../window.dart';
@@ -909,7 +909,7 @@ class BitmapCanvas extends EngineCanvas {
   ///
   /// The text is drawn starting at coordinates ([x], [y]). It uses the current
   /// font set by the most recent call to [setCssFont].
-  void fillText(String text, double x, double y, {List<ui.Shadow>? shadows}) {
+  void drawText(String text, double x, double y, {ui.PaintingStyle? style, List<ui.Shadow>? shadows}) {
     final html.CanvasRenderingContext2D ctx = _canvasPool.context;
     if (shadows != null) {
       ctx.save();
@@ -919,15 +919,24 @@ class BitmapCanvas extends EngineCanvas {
         ctx.shadowOffsetX = shadow.offset.dx;
         ctx.shadowOffsetY = shadow.offset.dy;
 
-        ctx.fillText(text, x, y);
+        if (style == ui.PaintingStyle.stroke) {
+          ctx.strokeText(text, x, y);
+        } else {
+          ctx.fillText(text, x, y);
+        }
       }
       ctx.restore();
     }
-    ctx.fillText(text, x, y);
+
+    if (style == ui.PaintingStyle.stroke) {
+      ctx.strokeText(text, x, y);
+    } else {
+      ctx.fillText(text, x, y);
+    }
   }
 
   @override
-  void drawParagraph(EngineParagraph paragraph, ui.Offset offset) {
+  void drawParagraph(CanvasParagraph paragraph, ui.Offset offset) {
     assert(paragraph.isLaidOut);
 
     /// - paragraph.drawOnCanvas checks that the text styling doesn't include
